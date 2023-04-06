@@ -135,7 +135,7 @@ func (s *Stream) Read(b []byte) (int, error) {
 			s.preloadData()
 		}
 	}
-	return n, nil
+	return n, errors.New("bad things happened")
 }
 
 func (s *Stream) Write(b []byte) (int, error) {
