@@ -103,10 +103,13 @@ type Multiplex struct {
 	bufIn, bufOut  chan struct{}
 	bufInTimer     *time.Timer
 	reservedMemory int
+
+	numStreams uint32
+	maxStreams uint32
 }
 
 // NewMultiplex creates a new multiplexer session.
-func NewMultiplex(con io.ReadWriteCloser, initiator bool, memoryManager MemoryManager) (*Multiplex, error) {
+func NewMultiplex(con io.ReadWriteCloser, initiator bool, memoryManager MemoryManager, maxStreams uint32) (*Multiplex, error) {
 	if memoryManager == nil {
 		memoryManager = &nullMemoryManager{}
 	}
@@ -118,6 +121,8 @@ func NewMultiplex(con io.ReadWriteCloser, initiator bool, memoryManager MemoryMa
 		shutdown:      make(chan struct{}),
 		nstreams:      make(chan *Stream, 16),
 		memoryManager: memoryManager,
+		numStreams:    0,
+		maxStreams:    maxStreams,
 	}
 
 	// up-front reserve memory for the essential buffers (1 input, 1 output + the reader buffer)
@@ -414,12 +419,18 @@ loop:
 				return
 			}
 
+			if mp.numStreams+1 > mp.maxStreams {
+				log.Debugf("accepting stream would exceed maxStreams: %d", ch)
+				continue
+			}
+
 			msch = mp.newStream(ch, "")
 			mp.chLock.Lock()
 			mp.channels[ch] = msch
 			mp.chLock.Unlock()
 			select {
 			case mp.nstreams <- msch:
+				mp.numStreams = mp.numStreams + 1
 			case <-mp.shutdown:
 				return
 			}
@@ -456,6 +467,7 @@ loop:
 
 			// close data channel, there will be no more data.
 			close(msch.dataIn)
+			mp.numStreams = mp.numStreams - 1
 
 			// We intentionally don't cancel any deadlines, cancel reads, cancel
 			// writes, etc. We just deliver the EOF by closing the
