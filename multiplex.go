@@ -86,20 +86,64 @@ type Multiplex struct {
 
 	channels map[streamID]*Stream
 	chLock   sync.Mutex
+
+	bufIn, bufOut  chan struct{}
+	bufInTimer     *time.Timer
+	reservedMemory int
+
+	numStreams uint32
+	maxStreams uint32
 }
 
 // NewMultiplex creates a new multiplexer session.
-func NewMultiplex(con net.Conn, initiator bool) *Multiplex {
+func NewMultiplex(con io.ReadWriteCloser, initiator bool, memoryManager MemoryManager, maxStreams uint32) (*Multiplex, error) {
+	if memoryManager == nil {
+		memoryManager = &nullMemoryManager{}
+	}
 	mp := &Multiplex{
-		con:        con,
-		initiator:  initiator,
-		buf:        bufio.NewReader(con),
-		channels:   make(map[streamID]*Stream),
-		closed:     make(chan struct{}),
-		shutdown:   make(chan struct{}),
-		writeCh:    make(chan []byte, 16),
-		writeTimer: time.NewTimer(0),
-		nstreams:   make(chan *Stream, 16),
+		con:           con,
+		initiator:     initiator,
+		channels:      make(map[streamID]*Stream),
+		closed:        make(chan struct{}),
+		shutdown:      make(chan struct{}),
+		nstreams:      make(chan *Stream, 16),
+		memoryManager: memoryManager,
+		numStreams:    0,
+		maxStreams:    maxStreams,
+	}
+
+	// up-front reserve memory for the essential buffers (1 input, 1 output + the reader buffer)
+	if err := mp.memoryManager.ReserveMemory(MinMemoryReservation, 255); err != nil {
+		return nil, err
+	}
+
+	mp.reservedMemory += MinMemoryReservation
+	bufs := 1
+
+	// reserve some more memory for buffers if possible
+	for i := 1; i < MaxBuffers; i++ {
+		var prio uint8
+		if bufs < 2 {
+			prio = 192
+		} else {
+			prio = 128
+		}
+
+		// 2xBufferSize -- one for input and one for output
+		if err := mp.memoryManager.ReserveMemory(2*BufferSize, prio); err != nil {
+			break
+		}
+		mp.reservedMemory += 2 * BufferSize
+		bufs++
+	}
+
+	mp.buf = bufio.NewReaderSize(con, BufferSize)
+	mp.writeCh = make(chan []byte, bufs)
+	mp.bufIn = make(chan struct{}, bufs)
+	mp.bufOut = make(chan struct{}, bufs)
+	mp.bufInTimer = time.NewTimer(0)
+	if !mp.bufInTimer.Stop() {
+		<-mp.bufInTimer.C
 	}
 
 	go mp.handleIncoming()
@@ -400,15 +444,20 @@ func (mp *Multiplex) handleIncoming() {
 				return
 			}
 
-			name := string(b)
 			pool.Put(b)
 
-			msch = mp.newStream(ch, name)
+			if mp.numStreams+1 > mp.maxStreams {
+				log.Debugf("accepting stream would exceed maxStreams: %d", ch)
+				continue
+			}
+
+			msch = mp.newStream(ch, "")
 			mp.chLock.Lock()
 			mp.channels[ch] = msch
 			mp.chLock.Unlock()
 			select {
 			case mp.nstreams <- msch:
+				mp.numStreams = mp.numStreams + 1
 			case <-mp.shutdown:
 				return
 			}
@@ -435,6 +484,7 @@ func (mp *Multiplex) handleIncoming() {
 
 			// close data channel, there will be no more data.
 			close(msch.dataIn)
+			mp.numStreams = mp.numStreams - 1
 
 			// We intentionally don't cancel any deadlines, cancel reads, cancel
 			// writes, etc. We just deliver the EOF by closing the

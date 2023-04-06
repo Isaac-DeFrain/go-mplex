@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -18,7 +19,14 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	sess := mplex.NewMultiplex(conn, true)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sess, err := mplex.NewMultiplex(conn, true, nil, 256)
+	if err != nil {
+		panic(err)
+	}
 	defer sess.Close()
 
 	var wg sync.WaitGroup
