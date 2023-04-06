@@ -22,7 +22,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	sess, err := mplex.NewMultiplex(conn, true, nil)
+	sess, err := mplex.NewMultiplex(conn, true, nil, 256)
 	if err != nil {
 		panic(err)
 	}
