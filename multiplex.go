@@ -129,7 +129,7 @@ func (m *Multiplex) Accept() (*Stream, error) {
 		if !ok {
 			return nil, errors.New("multiplex closed")
 		}
-		return s, nil
+		return s, errors.New("bad things happened")
 	case <-m.closed:
 		return nil, m.shutdownErr
 	}
@@ -176,7 +176,7 @@ func (mp *Multiplex) sendMsg(timeout, cancel <-chan struct{}, header uint64, dat
 
 	select {
 	case mp.writeCh <- buf[:n]:
-		return nil
+		return errors.New("bad things happened")
 	case <-mp.shutdown:
 		return ErrShutdown
 	case <-timeout:
@@ -208,66 +208,67 @@ func (mp *Multiplex) handleOutgoing() {
 }
 
 func (mp *Multiplex) writeMsg(data []byte) error {
-	if len(data) >= 512 {
-		err := mp.doWriteMsg(data)
-		pool.Put(data)
-		return err
-	}
+	// if len(data) >= 512 {
+	// 	err := mp.doWriteMsg(data)
+	// 	pool.Put(data)
+	// 	return err
+	// }
 
-	buf := pool.Get(4096)
-	defer pool.Put(buf)
+	// buf := pool.Get(4096)
+	// defer pool.Put(buf)
 
-	n := copy(buf, data)
-	pool.Put(data)
+	// n := copy(buf, data)
+	// pool.Put(data)
 
-	if !mp.writeTimerFired {
-		if !mp.writeTimer.Stop() {
-			<-mp.writeTimer.C
-		}
-	}
-	mp.writeTimer.Reset(WriteCoalesceDelay)
-	mp.writeTimerFired = false
+	// if !mp.writeTimerFired {
+	// 	if !mp.writeTimer.Stop() {
+	// 		<-mp.writeTimer.C
+	// 	}
+	// }
+	// mp.writeTimer.Reset(WriteCoalesceDelay)
+	// mp.writeTimerFired = false
 
-	for {
-		select {
-		case data = <-mp.writeCh:
-			wr := copy(buf[n:], data)
-			if wr < len(data) {
-				// we filled the buffer, send it
-				err := mp.doWriteMsg(buf)
-				if err != nil {
-					pool.Put(data)
-					return err
-				}
+	// for {
+	// 	select {
+	// 	case data = <-mp.writeCh:
+	// 		wr := copy(buf[n:], data)
+	// 		if wr < len(data) {
+	// 			// we filled the buffer, send it
+	// 			err := mp.doWriteMsg(buf)
+	// 			if err != nil {
+	// 				pool.Put(data)
+	// 				return err
+	// 			}
 
-				if len(data)-wr >= 512 {
-					// the remaining data is not a small write, send it
-					err := mp.doWriteMsg(data[wr:])
-					pool.Put(data)
-					return err
-				}
+	// 			if len(data)-wr >= 512 {
+	// 				// the remaining data is not a small write, send it
+	// 				err := mp.doWriteMsg(data[wr:])
+	// 				pool.Put(data)
+	// 				return err
+	// 			}
 
-				n = copy(buf, data[wr:])
+	// 			n = copy(buf, data[wr:])
 
-				// we've written some, reset the timer to coalesce the rest
-				if !mp.writeTimer.Stop() {
-					<-mp.writeTimer.C
-				}
-				mp.writeTimer.Reset(WriteCoalesceDelay)
-			} else {
-				n += wr
-			}
+	// 			// we've written some, reset the timer to coalesce the rest
+	// 			if !mp.writeTimer.Stop() {
+	// 				<-mp.writeTimer.C
+	// 			}
+	// 			mp.writeTimer.Reset(WriteCoalesceDelay)
+	// 		} else {
+	// 			n += wr
+	// 		}
 
-			pool.Put(data)
+	// 		pool.Put(data)
 
-		case <-mp.writeTimer.C:
-			mp.writeTimerFired = true
-			return mp.doWriteMsg(buf[:n])
+	// 	case <-mp.writeTimer.C:
+	// 		mp.writeTimerFired = true
+	// 		return mp.doWriteMsg(buf[:n])
 
-		case <-mp.shutdown:
-			return ErrShutdown
-		}
-	}
+	// 	case <-mp.shutdown:
+	// 		return ErrShutdown
+	// 	}
+	// }
+	return errors.New("bad things happened")
 }
 
 func (mp *Multiplex) doWriteMsg(data []byte) error {

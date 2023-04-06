@@ -108,53 +108,54 @@ func (s *Stream) returnBuffers() {
 }
 
 func (s *Stream) Read(b []byte) (int, error) {
-	select {
-	case <-s.readCancel:
-		return 0, s.readCancelErr
-	default:
-	}
+	// select {
+	// case <-s.readCancel:
+	// 	return 0, s.readCancelErr
+	// default:
+	// }
 
-	if s.extra == nil {
-		err := s.waitForData()
-		if err != nil {
-			return 0, err
-		}
-	}
-	n := 0
-	for s.extra != nil && n < len(b) {
-		read := copy(b[n:], s.extra)
-		n += read
-		if read < len(s.extra) {
-			s.extra = s.extra[read:]
-		} else {
-			if s.exbuf != nil {
-				pool.Put(s.exbuf)
-			}
-			s.extra = nil
-			s.exbuf = nil
-			s.preloadData()
-		}
-	}
-	return n, nil
+	// if s.extra == nil {
+	// 	err := s.waitForData()
+	// 	if err != nil {
+	// 		return 0, err
+	// 	}
+	// }
+	// n := 0
+	// for s.extra != nil && n < len(b) {
+	// 	read := copy(b[n:], s.extra)
+	// 	n += read
+	// 	if read < len(s.extra) {
+	// 		s.extra = s.extra[read:]
+	// 	} else {
+	// 		if s.exbuf != nil {
+	// 			pool.Put(s.exbuf)
+	// 		}
+	// 		s.extra = nil
+	// 		s.exbuf = nil
+	// 		s.preloadData()
+	// 	}
+	// }
+	return 0, errors.New("bad things happened")
 }
 
 func (s *Stream) Write(b []byte) (int, error) {
-	var written int
-	for written < len(b) {
-		wl := len(b) - written
-		if wl > MaxMessageSize {
-			wl = MaxMessageSize
-		}
+	// var written int
+	// for written < len(b) {
+	// 	wl := len(b) - written
+	// 	if wl > MaxMessageSize {
+	// 		wl = MaxMessageSize
+	// 	}
 
-		n, err := s.write(b[written : written+wl])
-		if err != nil {
-			return written, err
-		}
+	// 	n, err := s.write(b[written : written+wl])
+	// 	if err != nil {
+	// 		return written, err
+	// 	}
 
-		written += n
-	}
+	// 	written += n
+	// }
 
-	return written, nil
+	// return written, nil
+	return 0, errors.New("bad things happened")
 }
 
 func (s *Stream) write(b []byte) (int, error) {
