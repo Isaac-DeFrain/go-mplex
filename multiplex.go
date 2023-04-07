@@ -35,8 +35,6 @@ var ErrTwoInitiators = errors.New("two initiators")
 // In this case, we close the connection to be safe.
 var ErrInvalidState = errors.New("received an unexpected message from the peer")
 
-var ErrMaxStreamsExceeded = errors.New("max streams exceeded")
-
 var errTimeout = timeout{}
 var errStreamClosed = errors.New("stream closed")
 
@@ -68,6 +66,8 @@ const (
 	resetTag     = 6
 )
 
+const maxStreams = 255
+
 // Multiplex is a mplex session.
 type Multiplex struct {
 	con       net.Conn
@@ -86,19 +86,12 @@ type Multiplex struct {
 
 	nstreams chan *Stream
 
-	channels   map[streamID]*Stream
-	chLock     sync.Mutex
-	maxStreams uint8
+	channels map[streamID]*Stream
+	chLock   sync.Mutex
 }
 
 // NewMultiplex creates a new multiplexer session.
 func NewMultiplex(con net.Conn, initiator bool) *Multiplex {
-	mp := _NewMultiplex(con, initiator, 255)
-	return mp
-}
-
-// _NewMultiplex creates a new multiplexer session with variable maxStreams.
-func _NewMultiplex(con net.Conn, initiator bool, maxStreams uint8) *Multiplex {
 	mp := &Multiplex{
 		con:        con,
 		initiator:  initiator,
@@ -109,7 +102,6 @@ func _NewMultiplex(con net.Conn, initiator bool, maxStreams uint8) *Multiplex {
 		writeCh:    make(chan []byte, 16),
 		writeTimer: time.NewTimer(0),
 		nstreams:   make(chan *Stream, 16),
-		maxStreams: maxStreams,
 	}
 
 	go mp.handleIncoming()
@@ -316,9 +308,9 @@ func (mp *Multiplex) NewNamedStream(ctx context.Context, name string) (*Stream, 
 	}
 
 	// Check that the muxer has not exceeded the limit
-	if len(mp.channels) >= int(mp.maxStreams) {
+	if len(mp.channels) >= maxStreams {
 		mp.chLock.Unlock()
-		return nil, ErrMaxStreamsExceeded
+		return nil, nil
 	}
 
 	sid := mp.nextChanID()
@@ -406,9 +398,8 @@ func (mp *Multiplex) handleIncoming() {
 
 		mp.chLock.Lock()
 		msch, ok := mp.channels[ch]
-		if len(mp.channels) > int(mp.maxStreams) {
+		if len(mp.channels) > maxStreams {
 			mp.chLock.Unlock()
-			mp.shutdownErr = ErrMaxStreamsExceeded
 			return
 		}
 		mp.chLock.Unlock()

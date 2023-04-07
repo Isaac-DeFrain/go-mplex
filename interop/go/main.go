@@ -33,6 +33,9 @@ func main() {
 			if err != nil {
 				panic(err)
 			}
+			if s == nil {
+				return
+			}
 			readWrite(s)
 		}()
 	}
