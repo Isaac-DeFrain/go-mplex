@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -28,7 +29,7 @@ func main() {
 
 		go func() {
 			defer wg.Done()
-			s, err := sess.NewStream()
+			s, err := sess.NewStream(context.Background())
 			if err != nil {
 				panic(err)
 			}
