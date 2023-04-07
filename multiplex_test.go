@@ -835,3 +835,34 @@ func arrComp(a, b []byte) error {
 	}
 	return nil
 }
+
+func TestMaxStreams(t *testing.T) {
+	a, b := net.Pipe()
+	mpa := NewMultiplex(a, false)
+	mpb := NewMultiplex(b, true)
+
+	for count := 0; count < 32; count++ {
+		s, err := mpa.NewStream(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s == nil && err == nil {
+			t.Fatal("limit exceeded in error")
+		}
+		fmt.Printf("\rAlice: %d", count)
+	}
+
+	for count := 0; count < 32; count++ {
+		s, err := mpb.NewStream(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s == nil && err == nil {
+			t.Fatal("limit exceeded in error")
+		}
+		fmt.Printf("\rBob: %d", count)
+	}
+
+	mpa.Close()
+	mpb.Close()
+}
