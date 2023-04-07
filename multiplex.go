@@ -310,6 +310,7 @@ func (mp *Multiplex) NewNamedStream(ctx context.Context, name string) (*Stream, 
 	// Check that the muxer has not exceeded the limit
 	if len(mp.channels) >= maxStreams {
 		mp.chLock.Unlock()
+		log.Debugf("(NewNamedStream) maxStreams exceeded for peer: %s", mp.con.RemoteAddr())
 		return nil, nil
 	}
 
@@ -400,6 +401,7 @@ func (mp *Multiplex) handleIncoming() {
 		msch, ok := mp.channels[ch]
 		if len(mp.channels) > maxStreams {
 			mp.chLock.Unlock()
+			log.Debugf("(handleIncoming) maxStreams exceeded for peer: %s", mp.con.RemoteAddr())
 			return
 		}
 		mp.chLock.Unlock()
