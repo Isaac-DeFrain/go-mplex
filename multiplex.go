@@ -35,6 +35,8 @@ var ErrTwoInitiators = errors.New("two initiators")
 // In this case, we close the connection to be safe.
 var ErrInvalidState = errors.New("received an unexpected message from the peer")
 
+var ErrMaxStreamsExceeded = errors.New("max streams exceeded")
+
 var errTimeout = timeout{}
 var errStreamClosed = errors.New("stream closed")
 
@@ -46,15 +48,15 @@ var (
 
 type timeout struct{}
 
-func (_ timeout) Error() string {
+func (timeout) Error() string {
 	return "i/o deadline exceeded"
 }
 
-func (_ timeout) Temporary() bool {
+func (timeout) Temporary() bool {
 	return true
 }
 
-func (_ timeout) Timeout() bool {
+func (timeout) Timeout() bool {
 	return true
 }
 
@@ -84,12 +86,19 @@ type Multiplex struct {
 
 	nstreams chan *Stream
 
-	channels map[streamID]*Stream
-	chLock   sync.Mutex
+	channels   map[streamID]*Stream
+	chLock     sync.Mutex
+	maxStreams uint8
 }
 
 // NewMultiplex creates a new multiplexer session.
 func NewMultiplex(con net.Conn, initiator bool) *Multiplex {
+	mp := _NewMultiplex(con, initiator, 255)
+	return mp
+}
+
+// _NewMultiplex creates a new multiplexer session with variable maxStreams.
+func _NewMultiplex(con net.Conn, initiator bool, maxStreams uint8) *Multiplex {
 	mp := &Multiplex{
 		con:        con,
 		initiator:  initiator,
@@ -100,6 +109,7 @@ func NewMultiplex(con net.Conn, initiator bool) *Multiplex {
 		writeCh:    make(chan []byte, 16),
 		writeTimer: time.NewTimer(0),
 		nstreams:   make(chan *Stream, 16),
+		maxStreams: maxStreams,
 	}
 
 	go mp.handleIncoming()
@@ -305,6 +315,12 @@ func (mp *Multiplex) NewNamedStream(ctx context.Context, name string) (*Stream, 
 		return nil, ErrShutdown
 	}
 
+	// Check that the muxer has not exceeded the limit
+	if len(mp.channels) >= int(mp.maxStreams) {
+		mp.chLock.Unlock()
+		return nil, ErrMaxStreamsExceeded
+	}
+
 	sid := mp.nextChanID()
 	header := (sid << 3) | newStreamTag
 
@@ -390,6 +406,11 @@ func (mp *Multiplex) handleIncoming() {
 
 		mp.chLock.Lock()
 		msch, ok := mp.channels[ch]
+		if len(mp.channels) > int(mp.maxStreams) {
+			mp.chLock.Unlock()
+			mp.shutdownErr = ErrMaxStreamsExceeded
+			return
+		}
 		mp.chLock.Unlock()
 
 		switch tag {
@@ -526,7 +547,7 @@ func (mp *Multiplex) readNext() ([]byte, error) {
 	}
 
 	if l > uint64(MaxMessageSize) {
-		return nil, fmt.Errorf("message size too large!")
+		return nil, fmt.Errorf("message size too large")
 	}
 
 	if l == 0 {
