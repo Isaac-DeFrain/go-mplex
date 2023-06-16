@@ -66,7 +66,7 @@ const (
 	resetTag     = 6
 )
 
-const maxStreams = 255
+const maxStreams = 5
 
 // Multiplex is a mplex session.
 type Multiplex struct {
